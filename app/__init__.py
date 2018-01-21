@@ -314,13 +314,6 @@ def tail():
 
         # ubah numpy array ke raster dengan atribut yang telah didefinisikan
         out_ras = arcpy.NumPyArrayToRaster(band1, pnt, cellsize1, cellsize2)
-        # hapus yang tidak digunakan lagi
-        del band1
-        del spatialref
-        del cellsize1
-        del cellsize2
-        del extent
-        del pnt
 
         arcpy.CheckOutExtension("Spatial")
         print ("define projection ..")
@@ -332,7 +325,14 @@ def tail():
         arcpy.CopyRaster_management(out_ras, outputPath)
         # definisikan projeksi dengan referensi spatial
         arcpy.DefineProjection_management(outputPath, spatialref)
-
+        # hapus yang tidak digunakan lagi
+        del out_ras
+        del band1
+        del spatialref
+        del cellsize1
+        del cellsize2
+        del extent
+        del pnt
         ########################### MASKING CLOUD AND BORDER #########################
         print("Masking Cloud")
         # load file cm hasil download yang disediakan
