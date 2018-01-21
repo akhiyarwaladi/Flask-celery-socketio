@@ -20,6 +20,7 @@ import pandas as pd
 import numpy as np
 import os.path
 import ftpClient as ft
+import ftpSimodi as fs
 import shutil
 
 redis = StrictRedis(host=config.REDIS_HOST)
@@ -94,9 +95,10 @@ def tail():
     redis.publish(config.CHANNEL_NAME, msg)
     
     arcpy.CheckOutExtension("spatial")
-#    stat = ft.downloadFile()
-    filename = "L8U1T101062m_160115_geo.ers"
-    filenameOut = "L8U1T101062m_160115_geo_classified.TIF"
+    filenameNow, year, month = fs.downloadFile()
+
+    filename = filenameNow
+    filenameOut = filenameNow + "_classified.TIF"
     dataPath =  config.dataPath + filename
     modelPath = config.modelPath
     shpPath = config.shpPath
@@ -185,6 +187,7 @@ def tail():
     df_arr = np.array_split(df, 20)
     clf = joblib.load(modelPath) 
     kelasAll = []
+
     for i in range(len(df_arr)):
         
         print ("predicting data chunk-%s\n" % i)
