@@ -268,10 +268,23 @@ def tail():
     arcpy.CopyRaster_management(out_ras, outputPath)
     arcpy.DefineProjection_management(outputPath, spatialref)
 
+    print("Masking Cloud")
+    mask = Raster(os.path.dirname(dataPath) + "/" + filename.split(".")[0] + "_cm.ers")
+    inRas = Raster(outputPath)
+    inRas_mask = Con((mask == 1) & (mask == 2) & (mask == 11), 99, inRas)
+    inRas_mask.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_mask.TIF")
+    inRas_mask2 = SetNull(inRas_mask == 99, inRas_mask)
+    inRas_mask2.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskCloud.TIF")
+
+    del mask
+    del inRas
+    del inRas_mask
+    del inRas_mask2
+
     print("Masking with shp indonesia")
     arcpy.CheckOutExtension("Spatial")
     inMaskData = os.path.join(shpPath, "INDONESIA_PROP.shp")
-    inRasData = Raster(outputPath)
+    inRasData = Raster(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskCloud.TIF")
     outExtractByMask = ExtractByMask(inRasData, inMaskData)
     print("Saving in: " + str(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskShp.TIF"))
     outExtractByMask.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskShp.TIF")
