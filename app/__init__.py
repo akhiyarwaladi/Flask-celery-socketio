@@ -22,6 +22,7 @@ import os.path
 import ftpClient as ft
 import ftpSimodi as fs
 import shutil
+import gc
 
 redis = StrictRedis(host=config.REDIS_HOST)
 redis.delete(config.MESSAGES_KEY)
@@ -91,6 +92,7 @@ def stop():
 def tail():
 
     while(1):
+        # buka file csv untuk mengetahui scene yang telah selesai diproses
         log = pd.read_csv("logComplete.csv")
         liScene = log["scene"].tolist()
         liDate = log["dateComplete"].tolist()
@@ -100,97 +102,123 @@ def tail():
         redis.publish(config.CHANNEL_NAME, msg)
         
         arcpy.CheckOutExtension("spatial")
+        # pass list yang telah selesai ke ftp download
         filenameNow, scene, boolScene, year, month = fs.downloadFile(liScene)
 
         if(boolScene == False):
             print "Data hari ini selesai diproses"
             time.sleep(1000)
 
+        #definisikan nama file yang akan diproses
         filename = filenameNow
+        # definisikan nama file keluaran hasil klasifikasi yang masih mentah
         filenameOut = filenameNow + "_classified.TIF"
-
+        # definisikan letak file ers yang telah didownload dalam workstation
         dataPath =  config.dataPath + scene + "/" + filename
+        # definisikan letak model .pkl hasil training data sampel
         modelPath = config.modelPath
+        # definisikan shp file indonesia untuk cropping batas administrasi
         shpPath = config.shpPath
 
+        # definisikan folder keluaran hasil proses
         outFolder = config.outputPath + filename.split(".")[0]
+        # jika folder ada maka hapus 
         if(os.path.exists(outFolder)):
             shutil.rmtree(outFolder)
+        # buat folder yang telah didefinisikan
         os.makedirs(outFolder)
+        # definisikan path file keluaran
         outputPath = outFolder + "/" + filenameOut
 
+        ##################### KONVERSI DATA ERS KE TIAP BAND ######################################
         print ("converting b3")
         if(os.path.exists(dataPath + "TOA_B3" + ".TIF")):
             os.remove(dataPath + "TOA_B3" + ".TIF")
-
+        # Ambil hanya band 3 dan jadikan raster
         b_green = arcpy.Raster( dataPath  + "/B3" ) * 1.0
         print ("saving b3")
         msg = str(datetime.now()) + '\t' + "saving b3 \n"
         redis.rpush(config.MESSAGES_KEY, msg)
         redis.publish(config.CHANNEL_NAME, msg)
+        # save raster band 3 ke folder data input
         b_green.save(dataPath + "TOA_B3" + ".TIF" )
         del b_green
 
         print ("converting b5")
         if(os.path.exists(dataPath + "TOA_B5" + ".TIF")):
             os.remove(dataPath + "TOA_B5" + ".TIF")
-
+        # Ambil hanya band 5 dan jadikan raster
         b_nir = arcpy.Raster( dataPath  + "/B5" ) * 1.0
         print ("saving b5")
         msg = str(datetime.now()) + '\t' + "saving b5 \n"
         redis.rpush(config.MESSAGES_KEY, msg)
         redis.publish(config.CHANNEL_NAME, msg)
+        # save raster band 5 ke folder data input
         b_nir.save( dataPath +  "TOA_B5" + ".TIF" )
         del b_nir
 
         print ("converting b6")
         if(os.path.exists(dataPath + "TOA_B6" + ".TIF")):
            os.remove(dataPath + "TOA_B6" + ".TIF")
-
+        # Ambil hanya band 6 dan jadikan raster
         b_swir1 = arcpy.Raster( dataPath + "/B6") * 1.0
         msg = str(datetime.now()) + '\t' + "saving b6 \n"
         redis.rpush(config.MESSAGES_KEY, msg)
         redis.publish(config.CHANNEL_NAME, msg)
         print ("saving b6")
+        # save raster band 6 ke folder data input
         b_swir1.save( dataPath + "TOA_B6" + ".TIF" )
         del b_swir1
 
+        ####################### SELESAI KONVERSI DATA #######################################
+        
+        #################### UBAH RASTER KE FORMAT DATAFRAME ###############################
         msg = str(datetime.now()) + '\t' + "Processing file "+filename+"\n"
         redis.rpush(config.MESSAGES_KEY, msg)
         redis.publish(config.CHANNEL_NAME, msg)
 
+        # load semua raster yang telah dikonversi diawal
         rasterarrayband6 = arcpy.RasterToNumPyArray(dataPath + "TOA_B3.TIF")
         rasterarrayband5 = arcpy.RasterToNumPyArray(dataPath + "TOA_B5.TIF")
         rasterarrayband3 = arcpy.RasterToNumPyArray(dataPath + "TOA_B6.TIF")
         
         print("Change raster format to numpy array")
+        # gabungkan 3 array data secara horizontal
         data = np.array([rasterarrayband6.ravel(), rasterarrayband5.ravel(), rasterarrayband3.ravel()], dtype=np.int16)
+        # ubah menjadi vertikal untuk kebutuhan prediksi .pkl
         data = data.transpose()
 
+        # langsung hapus variabel yang tidak digunakan lagi
         del rasterarrayband5
         del rasterarrayband3
 
         print("Change to dataframe format")
-
         msg = str(datetime.now()) + '\t' + "Change to dataframe format \n"
         redis.rpush(config.MESSAGES_KEY, msg)
         redis.publish(config.CHANNEL_NAME, msg)
         #time.sleep(1)
 
+        # definisikan nama kolom dataframe
         columns = ['band3','band5', 'band6']
+        # ubah array vertical menjadi dataframe
         df = pd.DataFrame(data, columns=columns)
+        # hapus array vertikal
         del data
-
+        ###################### SELESAI ####################################################
         print("Split data to 20 chunks ")
         msg = str(datetime.now()) + '\t' + "Split data to 20 chunks \n"
         redis.rpush(config.MESSAGES_KEY, msg)
         redis.publish(config.CHANNEL_NAME, msg)
         #time.sleep(1)
 
+        # bagi data menjadi 20 bagian karena program tidak kuat prediksi sekaligus
         df_arr = np.array_split(df, 20)
+        # load classifier (model pkl) yang telah di train
         clf = joblib.load(modelPath) 
-        kelasAll = []
 
+        # definisikan array untuk menampung nilai integer hasil prediksi
+        kelasAll = []
+        # ulangi untuk setiap bagian data
         for i in range(len(df_arr)):
             
             print ("predicting data chunk-%s\n" % i)
@@ -202,18 +230,26 @@ def tail():
             redis.rpush(config.MESSAGES_KEY_2, msg2)
             redis.publish(config.CHANNEL_NAME_2, msg2)
             #time.sleep(1)
+            # fungi untuk prediksi data baru dengan data ke i
             kelas = clf.predict(df_arr[i])
+
+            # buat dataframe kosong
             dat = pd.DataFrame()
+            # masukkan hasil prediksi data ke i ke kolom kelas
             dat['kel'] = kelas
             print ("mapping to integer class")
             msg = str(datetime.now()) + '\t' + "mapping to integer class \n"
             redis.rpush(config.MESSAGES_KEY, msg)
             redis.publish(config.CHANNEL_NAME, msg)
             #time.sleep(1)
+            # definisikan dictionary untuk ubah string kelas ke integer kelas prediksi
             mymap = {'awan':1, 'air':2, 'tanah':3, 'vegetasi':4}
+            # fungsi map dengan parameter dictionary
             dat['kel'] = dat['kel'].map(mymap)
 
+            # ubah kolom dataframe ke array 
             band1Array = dat['kel'].values
+            # ubah array ke numpy array dengan tipe unsigned 8 untuk menghindari memory error
             band1Array = np.array(band1Array, dtype = np.uint8)
             print ("extend to list")
             msg = str(datetime.now()) + '\t' + "extend to list \n"
@@ -221,10 +257,12 @@ def tail():
             redis.publish(config.CHANNEL_NAME, msg)
             #time.sleep(1)
             #kelasAllZeros[] = band1Array
+            # masukkan numpy aray ke list prediksi
             kelasAll.extend(band1Array.tolist())
+            # mencoba cek array hasil prediksi
             print(kelasAll[1:10])
-            #del band1Array
-
+            
+        # hapus semua variabel yang tidak digunakan lagi
         del df_arr
         del clf
         del kelas
@@ -236,25 +274,34 @@ def tail():
         redis.rpush(config.MESSAGES_KEY, msg)
         redis.publish(config.CHANNEL_NAME, msg)
 
+        # ubah list prediksi ke numpy array
         kelasAllArray = np.array(kelasAll, dtype=np.uint8)
-
+        # hapus list prediksi
+        del kelasAll
         print ("reshaping np array")
         msg = str(datetime.now()) + '\t' + "reshaping np array \n"
         redis.rpush(config.MESSAGES_KEY, msg)
         redis.publish(config.CHANNEL_NAME, msg)
 
+        # reshape numpy array 1 dimensi ke dua dimensi sesuai format raster
         band1 = np.reshape(kelasAllArray, (-1, rasterarrayband6[0].size))
+        # ubah tipe data ke unsigned integer
         band1 = band1.astype(np.uint8)
 
+        # load raster band6 untuk kebutuhan projeksi dan batas batas raster
         raster = arcpy.Raster(dataPath + "TOA_B6.TIF")
         inputRaster = dataPath + "TOA_B6.TIF"
 
+        # ambil referensi spatial
         spatialref = arcpy.Describe(inputRaster).spatialReference
+        # ambil tinggi dan lebar raster
         cellsize1  = raster.meanCellHeight
         cellsize2  = raster.meanCellWidth
+        # definisikan extent dari raster dan point dari extent
         extent     = arcpy.Describe(inputRaster).Extent
         pnt        = arcpy.Point(extent.XMin,extent.YMin)
 
+        # hapus yang tidak dipakai lagi
         del raster
         del rasterarrayband6
         del kelasAllArray
@@ -265,7 +312,15 @@ def tail():
         redis.rpush(config.MESSAGES_KEY, msg)
         redis.publish(config.CHANNEL_NAME, msg)
 
+        # ubah numpy array ke raster dengan atribut yang telah didefinisikan
         out_ras = arcpy.NumPyArrayToRaster(band1, pnt, cellsize1, cellsize2)
+        # hapus yang tidak digunakan lagi
+        del band1
+        del spatialref
+        del cellsize1
+        del cellsize2
+        del extent
+        del pnt
 
         arcpy.CheckOutExtension("Spatial")
         print ("define projection ..")
@@ -273,37 +328,59 @@ def tail():
         redis.rpush(config.MESSAGES_KEY, msg)
         redis.publish(config.CHANNEL_NAME, msg)
 
+        # simpan raster hasil konversi ke path yang telah didefinisikan
         arcpy.CopyRaster_management(out_ras, outputPath)
+        # definisikan projeksi dengan referensi spatial
         arcpy.DefineProjection_management(outputPath, spatialref)
 
+        ########################### MASKING CLOUD AND BORDER #########################
         print("Masking Cloud")
+        # load file cm hasil download yang disediakan
         mask = Raster(os.path.dirname(dataPath) + "/" + filename.split(".")[0] + "_cm.ers")
+        # load raster hasil klasifikasi mentah 
         inRas = Raster(outputPath)
+        # jika file cm bernilai 1 = cloud, 2 = shadow, 11 = border
+        # ubah nilai tersebut menjadi 1 dan lainnya menjadi 0
         inRas_mask = Con((mask == 1), 1, Con((mask == 2), 1, Con((mask == 11), 1, 0)))
-        inRas_mask.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_mask.TIF")
+        # buat raster yang merupakan nilai no data dari hasil kondisi diatas, hasilnya nodata = 1
+        # saya juga tidak mengerti yang bukan cloud jadi no data
         mask2 = IsNull(inRas_mask)
+        # jika raster bernilai 1 maka ubah jadi 0, jika tidak tetap nilai raster hasil kondisi
         inRas2 = Con((mask2 == 1), 0, inRas_mask)
-        inRas2.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_mask2.TIF")
+        # simpan raster pure dimana semua nilai 1 akan dihilangkan dari hasil klasifikasi
+        inRas2.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_mask.TIF")
+        # jika raster bernilai 1 maka jadi no data, jika tidak maka tetap si raster hasil awal
         inRas_mask2 = SetNull(inRas2 == 1, inRas)
+        # simpan raster yang telah bersih dari cloud dan border yang jelek
         inRas_mask2.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskCloud.TIF")
 
+        # hapus variabel conditional yang tidak digunakan lagi
         del mask
+        del mask2
         del inRas
+        del inRas2
         del inRas_mask
         del inRas_mask2
+        ############################## SELESAI ###########################################
 
+        ####################### MASKING DENGAN SHP INDONESIA ##############################
         print("Masking with shp indonesia")
         arcpy.CheckOutExtension("Spatial")
+        # buka file shp indonesia
         inMaskData = os.path.join(shpPath, "INDONESIA_PROP.shp")
+        # buka raster hasil masking cloud dan border
         inRasData = Raster(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskCloud.TIF")
+        # terapkan fungsi masking dengan shapefile
         outExtractByMask = ExtractByMask(inRasData, inMaskData)
         print("Saving in: " + str(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskShp.TIF"))
+        # simpan hasil masking
         outExtractByMask.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskShp.TIF")
+        ########################## SELESAI ################################################
+        # hapus lagi dan lagi variabel yang tidak digunakan
+        del inMaskData
+        del inRasData
+        del outExtractByMask
 
-        del out_ras
-        del band1
-        del spatialref
-        del extent
         arcpy.Delete_management("in_memory")
 
         ####################### SAVE LOG DATA YANG TELAH SELESAI DIPROSES ########################################
@@ -324,6 +401,13 @@ def tail():
 
         print(log2.head(5))
         log2.to_csv("logComplete.csv", index=False)
+
+        del liScene
+        del liDate
+        del serScene
+        del serDate
+        del log
+        del log2
         ##########################################################################################################
 
         print ("Finished ..")
@@ -333,6 +417,9 @@ def tail():
 
         redis.delete(config.MESSAGES_KEY)
         redis.delete(config.MESSAGES_KEY_2)
+
+        gc.collect()
+
 
 class TailNamespace(BaseNamespace):
     def listener(self):
