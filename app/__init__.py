@@ -90,226 +90,249 @@ def stop():
 @celery.task
 def tail():
 
-    msg = str(datetime.now()) + '\t' + "Importing Library ... \n"
-    redis.rpush(config.MESSAGES_KEY, msg)
-    redis.publish(config.CHANNEL_NAME, msg)
-    
-    arcpy.CheckOutExtension("spatial")
-    filenameNow, year, month = fs.downloadFile()
+    while(1):
+        log = pd.read_csv("logComplete.csv")
+        liScene = log["scene"].tolist()
+        liDate = log["dateComplete"].tolist()
 
-    filename = filenameNow
-    filenameOut = filenameNow + "_classified.TIF"
-    dataPath =  config.dataPath + filename
-    modelPath = config.modelPath
-    shpPath = config.shpPath
-
-    outFolder = config.outputPath + filename.split(".")[0]
-    if(os.path.exists(outFolder)):
-        shutil.rmtree(outFolder)
-    os.makedirs(outFolder)
-    outputPath = outFolder + "/" + filenameOut
-
-
-    print ("converting b3")
-    if(os.path.exists(dataPath + "TOA_B3" + ".TIF")):
-        os.remove(dataPath + "TOA_B3" + ".TIF")
-
-    b_green = arcpy.Raster( dataPath  + "/B3" ) * 1.0
-    #b_green_mask = Con((mask >= 1) & (mask <= 7), 1, b_green)
-    #b_green_mask = SetNull(b_green_mask == 1, b_green_mask)
-    print ("saving b3")
-    msg = str(datetime.now()) + '\t' + "saving b3 \n"
-    redis.rpush(config.MESSAGES_KEY, msg)
-    redis.publish(config.CHANNEL_NAME, msg)
-    b_green.save(dataPath + "TOA_B3" + ".TIF" )
-    del b_green
-
-    print ("converting b5")
-    if(os.path.exists(dataPath + "TOA_B5" + ".TIF")):
-        os.remove(dataPath + "TOA_B5" + ".TIF")
-
-    b_nir = arcpy.Raster( dataPath  + "/B5" ) * 1.0
-    #b_nir_mask = Con((mask >= 1) & (mask <= 7), 1, b_nir)
-    #b_nir_mask = SetNull(b_nir_mask == 1, b_nir_mask)
-    print ("saving b5")
-    msg = str(datetime.now()) + '\t' + "saving b5 \n"
-    redis.rpush(config.MESSAGES_KEY, msg)
-    redis.publish(config.CHANNEL_NAME, msg)
-    b_nir.save( dataPath +  "TOA_B5" + ".TIF" )
-    del b_nir
-
-    print ("converting b6")
-    if(os.path.exists(dataPath + "TOA_B6" + ".TIF")):
-       os.remove(dataPath + "TOA_B6" + ".TIF")
-
-    b_swir1 = arcpy.Raster( dataPath + "/B6") * 1.0
-    #b_swir1_mask = Con((mask >= 1) & (mask <= 7), 1, b_swir1)
-    #b_swir1_mask = SetNull(b_swir1_mask == 1, b_swir1_mask)
-    msg = str(datetime.now()) + '\t' + "saving b6 \n"
-    redis.rpush(config.MESSAGES_KEY, msg)
-    redis.publish(config.CHANNEL_NAME, msg)
-    print ("saving b6")
-    b_swir1.save( dataPath + "TOA_B6" + ".TIF" )
-    del b_swir1
-
-    msg = str(datetime.now()) + '\t' + "Processing file "+filename+"\n"
-    redis.rpush(config.MESSAGES_KEY, msg)
-    redis.publish(config.CHANNEL_NAME, msg)
-
-    rasterarrayband6 = arcpy.RasterToNumPyArray(dataPath + "TOA_B3.TIF")
-    rasterarrayband5 = arcpy.RasterToNumPyArray(dataPath + "TOA_B5.TIF")
-    rasterarrayband3 = arcpy.RasterToNumPyArray(dataPath + "TOA_B6.TIF")
-    
-    print("Change raster format to numpy array")
-    data = np.array([rasterarrayband6.ravel(), rasterarrayband5.ravel(), rasterarrayband3.ravel()], dtype=np.int16)
-    data = data.transpose()
-
-    del rasterarrayband5
-    del rasterarrayband3
-
-    print("Change to dataframe format")
-
-    msg = str(datetime.now()) + '\t' + "Change to dataframe format \n"
-    redis.rpush(config.MESSAGES_KEY, msg)
-    redis.publish(config.CHANNEL_NAME, msg)
-    #time.sleep(1)
-
-    columns = ['band3','band5', 'band6']
-    df = pd.DataFrame(data, columns=columns)
-    del data
-
-    print("Split data to 20 chunks ")
-    msg = str(datetime.now()) + '\t' + "Split data to 20 chunks \n"
-    redis.rpush(config.MESSAGES_KEY, msg)
-    redis.publish(config.CHANNEL_NAME, msg)
-    #time.sleep(1)
-
-    df_arr = np.array_split(df, 20)
-    clf = joblib.load(modelPath) 
-    kelasAll = []
-
-    for i in range(len(df_arr)):
+        msg = str(datetime.now()) + '\t' + "Importing Library ... \n"
+        redis.rpush(config.MESSAGES_KEY, msg)
+        redis.publish(config.CHANNEL_NAME, msg)
         
-        print ("predicting data chunk-%s\n" % i)
-        msg = str(datetime.now()) + '\t' + "predicting data chunk-%s\n" % i
+        arcpy.CheckOutExtension("spatial")
+        filenameNow, scene, boolScene, year, month = fs.downloadFile(liScene)
+
+        if(boolScene == False):
+            print "Data hari ini selesai diproses"
+            time.sleep(1000)
+
+        filename = filenameNow
+        filenameOut = filenameNow + "_classified.TIF"
+
+        dataPath =  config.dataPath + scene + "/" + filename
+        modelPath = config.modelPath
+        shpPath = config.shpPath
+
+        outFolder = config.outputPath + filename.split(".")[0]
+        if(os.path.exists(outFolder)):
+            shutil.rmtree(outFolder)
+        os.makedirs(outFolder)
+        outputPath = outFolder + "/" + filenameOut
+
+        print ("converting b3")
+        if(os.path.exists(dataPath + "TOA_B3" + ".TIF")):
+            os.remove(dataPath + "TOA_B3" + ".TIF")
+
+        b_green = arcpy.Raster( dataPath  + "/B3" ) * 1.0
+        print ("saving b3")
+        msg = str(datetime.now()) + '\t' + "saving b3 \n"
+        redis.rpush(config.MESSAGES_KEY, msg)
+        redis.publish(config.CHANNEL_NAME, msg)
+        b_green.save(dataPath + "TOA_B3" + ".TIF" )
+        del b_green
+
+        print ("converting b5")
+        if(os.path.exists(dataPath + "TOA_B5" + ".TIF")):
+            os.remove(dataPath + "TOA_B5" + ".TIF")
+
+        b_nir = arcpy.Raster( dataPath  + "/B5" ) * 1.0
+        print ("saving b5")
+        msg = str(datetime.now()) + '\t' + "saving b5 \n"
+        redis.rpush(config.MESSAGES_KEY, msg)
+        redis.publish(config.CHANNEL_NAME, msg)
+        b_nir.save( dataPath +  "TOA_B5" + ".TIF" )
+        del b_nir
+
+        print ("converting b6")
+        if(os.path.exists(dataPath + "TOA_B6" + ".TIF")):
+           os.remove(dataPath + "TOA_B6" + ".TIF")
+
+        b_swir1 = arcpy.Raster( dataPath + "/B6") * 1.0
+        msg = str(datetime.now()) + '\t' + "saving b6 \n"
+        redis.rpush(config.MESSAGES_KEY, msg)
+        redis.publish(config.CHANNEL_NAME, msg)
+        print ("saving b6")
+        b_swir1.save( dataPath + "TOA_B6" + ".TIF" )
+        del b_swir1
+
+        msg = str(datetime.now()) + '\t' + "Processing file "+filename+"\n"
         redis.rpush(config.MESSAGES_KEY, msg)
         redis.publish(config.CHANNEL_NAME, msg)
 
-        msg2 = i
-        redis.rpush(config.MESSAGES_KEY_2, msg2)
-        redis.publish(config.CHANNEL_NAME_2, msg2)
-        #time.sleep(1)
-        kelas = clf.predict(df_arr[i])
-        dat = pd.DataFrame()
-        dat['kel'] = kelas
-        print ("mapping to integer class")
-        msg = str(datetime.now()) + '\t' + "mapping to integer class \n"
+        rasterarrayband6 = arcpy.RasterToNumPyArray(dataPath + "TOA_B3.TIF")
+        rasterarrayband5 = arcpy.RasterToNumPyArray(dataPath + "TOA_B5.TIF")
+        rasterarrayband3 = arcpy.RasterToNumPyArray(dataPath + "TOA_B6.TIF")
+        
+        print("Change raster format to numpy array")
+        data = np.array([rasterarrayband6.ravel(), rasterarrayband5.ravel(), rasterarrayband3.ravel()], dtype=np.int16)
+        data = data.transpose()
+
+        del rasterarrayband5
+        del rasterarrayband3
+
+        print("Change to dataframe format")
+
+        msg = str(datetime.now()) + '\t' + "Change to dataframe format \n"
         redis.rpush(config.MESSAGES_KEY, msg)
         redis.publish(config.CHANNEL_NAME, msg)
         #time.sleep(1)
-        mymap = {'awan':1, 'air':2, 'tanah':3, 'vegetasi':4}
-        dat['kel'] = dat['kel'].map(mymap)
 
-        band1Array = dat['kel'].values
-        band1Array = np.array(band1Array, dtype = np.uint8)
-        print ("extend to list")
-        msg = str(datetime.now()) + '\t' + "extend to list \n"
+        columns = ['band3','band5', 'band6']
+        df = pd.DataFrame(data, columns=columns)
+        del data
+
+        print("Split data to 20 chunks ")
+        msg = str(datetime.now()) + '\t' + "Split data to 20 chunks \n"
         redis.rpush(config.MESSAGES_KEY, msg)
         redis.publish(config.CHANNEL_NAME, msg)
         #time.sleep(1)
-        #kelasAllZeros[] = band1Array
-        kelasAll.extend(band1Array.tolist())
-        print(kelasAll[1:10])
-        #del band1Array
 
-    del df_arr
-    del clf
-    del kelas
-    del dat
-    del band1Array
+        df_arr = np.array_split(df, 20)
+        clf = joblib.load(modelPath) 
+        kelasAll = []
 
-    print ("change list to np array")
-    msg = str(datetime.now()) + '\t' + "change list to np array \n"
-    redis.rpush(config.MESSAGES_KEY, msg)
-    redis.publish(config.CHANNEL_NAME, msg)
+        for i in range(len(df_arr)):
+            
+            print ("predicting data chunk-%s\n" % i)
+            msg = str(datetime.now()) + '\t' + "predicting data chunk-%s\n" % i
+            redis.rpush(config.MESSAGES_KEY, msg)
+            redis.publish(config.CHANNEL_NAME, msg)
 
-    kelasAllArray = np.array(kelasAll, dtype=np.uint8)
+            msg2 = i
+            redis.rpush(config.MESSAGES_KEY_2, msg2)
+            redis.publish(config.CHANNEL_NAME_2, msg2)
+            #time.sleep(1)
+            kelas = clf.predict(df_arr[i])
+            dat = pd.DataFrame()
+            dat['kel'] = kelas
+            print ("mapping to integer class")
+            msg = str(datetime.now()) + '\t' + "mapping to integer class \n"
+            redis.rpush(config.MESSAGES_KEY, msg)
+            redis.publish(config.CHANNEL_NAME, msg)
+            #time.sleep(1)
+            mymap = {'awan':1, 'air':2, 'tanah':3, 'vegetasi':4}
+            dat['kel'] = dat['kel'].map(mymap)
 
-    print ("reshaping np array")
-    msg = str(datetime.now()) + '\t' + "reshaping np array \n"
-    redis.rpush(config.MESSAGES_KEY, msg)
-    redis.publish(config.CHANNEL_NAME, msg)
+            band1Array = dat['kel'].values
+            band1Array = np.array(band1Array, dtype = np.uint8)
+            print ("extend to list")
+            msg = str(datetime.now()) + '\t' + "extend to list \n"
+            redis.rpush(config.MESSAGES_KEY, msg)
+            redis.publish(config.CHANNEL_NAME, msg)
+            #time.sleep(1)
+            #kelasAllZeros[] = band1Array
+            kelasAll.extend(band1Array.tolist())
+            print(kelasAll[1:10])
+            #del band1Array
 
-    band1 = np.reshape(kelasAllArray, (-1, rasterarrayband6[0].size))
-    band1 = band1.astype(np.uint8)
+        del df_arr
+        del clf
+        del kelas
+        del dat
+        del band1Array
 
-    raster = arcpy.Raster(dataPath + "TOA_B6.TIF")
-    inputRaster = dataPath + "TOA_B6.TIF"
+        print ("change list to np array")
+        msg = str(datetime.now()) + '\t' + "change list to np array \n"
+        redis.rpush(config.MESSAGES_KEY, msg)
+        redis.publish(config.CHANNEL_NAME, msg)
 
-    spatialref = arcpy.Describe(inputRaster).spatialReference
-    cellsize1  = raster.meanCellHeight
-    cellsize2  = raster.meanCellWidth
-    extent     = arcpy.Describe(inputRaster).Extent
-    pnt        = arcpy.Point(extent.XMin,extent.YMin)
+        kelasAllArray = np.array(kelasAll, dtype=np.uint8)
 
-    del raster
-    del rasterarrayband6
-    del kelasAllArray
+        print ("reshaping np array")
+        msg = str(datetime.now()) + '\t' + "reshaping np array \n"
+        redis.rpush(config.MESSAGES_KEY, msg)
+        redis.publish(config.CHANNEL_NAME, msg)
 
-    # save the raster
-    print ("numpy array to raster ..")
-    msg = str(datetime.now()) + '\t' + "numpy array to raster .. \n"
-    redis.rpush(config.MESSAGES_KEY, msg)
-    redis.publish(config.CHANNEL_NAME, msg)
+        band1 = np.reshape(kelasAllArray, (-1, rasterarrayband6[0].size))
+        band1 = band1.astype(np.uint8)
 
-    out_ras = arcpy.NumPyArrayToRaster(band1, pnt, cellsize1, cellsize2)
+        raster = arcpy.Raster(dataPath + "TOA_B6.TIF")
+        inputRaster = dataPath + "TOA_B6.TIF"
 
-    arcpy.CheckOutExtension("Spatial")
-    print ("define projection ..")
-    msg = str(datetime.now()) + '\t' + "define projection ..\n"
-    redis.rpush(config.MESSAGES_KEY, msg)
-    redis.publish(config.CHANNEL_NAME, msg)
+        spatialref = arcpy.Describe(inputRaster).spatialReference
+        cellsize1  = raster.meanCellHeight
+        cellsize2  = raster.meanCellWidth
+        extent     = arcpy.Describe(inputRaster).Extent
+        pnt        = arcpy.Point(extent.XMin,extent.YMin)
 
-    arcpy.CopyRaster_management(out_ras, outputPath)
-    arcpy.DefineProjection_management(outputPath, spatialref)
+        del raster
+        del rasterarrayband6
+        del kelasAllArray
 
-    print("Masking Cloud")
-    mask = Raster(os.path.dirname(dataPath) + "/" + filename.split(".")[0] + "_cm.ers")
-    inRas = Raster(outputPath)
-    inRas_mask = Con((mask == 1), 1, Con((mask == 2), 1, Con((mask == 11), 1, 0)))
-    inRas_mask.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_mask.TIF")
-    mask2 = IsNull(inRas_mask)
-    inRas2 = Con((mask2 == 1), 0, inRas_mask)
-    inRas2.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_mask2.TIF")
-    inRas_mask2 = SetNull(inRas2 == 1, inRas)
-    inRas_mask2.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskCloud.TIF")
+        # save the raster
+        print ("numpy array to raster ..")
+        msg = str(datetime.now()) + '\t' + "numpy array to raster .. \n"
+        redis.rpush(config.MESSAGES_KEY, msg)
+        redis.publish(config.CHANNEL_NAME, msg)
 
-    del mask
-    del inRas
-    del inRas_mask
-    del inRas_mask2
+        out_ras = arcpy.NumPyArrayToRaster(band1, pnt, cellsize1, cellsize2)
 
-    print("Masking with shp indonesia")
-    arcpy.CheckOutExtension("Spatial")
-    inMaskData = os.path.join(shpPath, "INDONESIA_PROP.shp")
-    inRasData = Raster(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskCloud.TIF")
-    outExtractByMask = ExtractByMask(inRasData, inMaskData)
-    print("Saving in: " + str(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskShp.TIF"))
-    outExtractByMask.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskShp.TIF")
+        arcpy.CheckOutExtension("Spatial")
+        print ("define projection ..")
+        msg = str(datetime.now()) + '\t' + "define projection ..\n"
+        redis.rpush(config.MESSAGES_KEY, msg)
+        redis.publish(config.CHANNEL_NAME, msg)
 
-    del out_ras
-    del band1
-    del spatialref
-    del extent
-    arcpy.Delete_management("in_memory")
+        arcpy.CopyRaster_management(out_ras, outputPath)
+        arcpy.DefineProjection_management(outputPath, spatialref)
 
-    print ("Finished ..")
-    msg = str(datetime.now()) + '\t' + "Finished ... \n"
-    redis.rpush(config.MESSAGES_KEY, msg)
-    redis.publish(config.CHANNEL_NAME, msg)
+        print("Masking Cloud")
+        mask = Raster(os.path.dirname(dataPath) + "/" + filename.split(".")[0] + "_cm.ers")
+        inRas = Raster(outputPath)
+        inRas_mask = Con((mask == 1), 1, Con((mask == 2), 1, Con((mask == 11), 1, 0)))
+        inRas_mask.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_mask.TIF")
+        mask2 = IsNull(inRas_mask)
+        inRas2 = Con((mask2 == 1), 0, inRas_mask)
+        inRas2.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_mask2.TIF")
+        inRas_mask2 = SetNull(inRas2 == 1, inRas)
+        inRas_mask2.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskCloud.TIF")
 
-    redis.delete(config.MESSAGES_KEY)
-    redis.delete(config.MESSAGES_KEY_2)
+        del mask
+        del inRas
+        del inRas_mask
+        del inRas_mask2
+
+        print("Masking with shp indonesia")
+        arcpy.CheckOutExtension("Spatial")
+        inMaskData = os.path.join(shpPath, "INDONESIA_PROP.shp")
+        inRasData = Raster(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskCloud.TIF")
+        outExtractByMask = ExtractByMask(inRasData, inMaskData)
+        print("Saving in: " + str(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskShp.TIF"))
+        outExtractByMask.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskShp.TIF")
+
+        del out_ras
+        del band1
+        del spatialref
+        del extent
+        arcpy.Delete_management("in_memory")
+
+        ####################### SAVE LOG DATA YANG TELAH SELESAI DIPROSES ########################################
+        liScene.append(scene)
+        liDate.append(str(datetime.now()))
+
+        print(liScene)
+        print(liDate)
+
+        serScene = pd.Series(liScene)
+        serDate = pd.Series(liDate)
+
+        print(serScene)
+        print(serDate)
+        log2 = pd.DataFrame()
+        log2["scene"] = serScene
+        log2["dateComplete"] = serDate
+
+        print(log2.head(5))
+        log2.to_csv("logComplete.csv", index=False)
+        ##########################################################################################################
+
+        print ("Finished ..")
+        msg = str(datetime.now()) + '\t' + "Finished ... \n"
+        redis.rpush(config.MESSAGES_KEY, msg)
+        redis.publish(config.CHANNEL_NAME, msg)
+
+        redis.delete(config.MESSAGES_KEY)
+        redis.delete(config.MESSAGES_KEY_2)
 
 class TailNamespace(BaseNamespace):
     def listener(self):

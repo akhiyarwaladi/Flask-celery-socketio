@@ -2,7 +2,9 @@ from ftplib import FTP
 import os
 from datetime import datetime
 import shutil
-def downloadFile():
+def downloadFile(liScene):
+	boolScene = False
+	print "Sudah diproses " + str(liScene)
 
 	tupDate = datetime.now()
 	print tupDate.year
@@ -19,6 +21,13 @@ def downloadFile():
 	ftp.cwd(month)
 	for scene in ftp.nlst():
 		print scene
+		# jika scene termasuk kedalam list yang telah diproses
+		if scene in liScene:
+			print "scene " + str(scene) + " sudah diproses"
+			# lanjut lihat folder scene yang lainnya
+			continue;
+		# jika tidak termasuk maka set boolean bahwa ada data yang akan diproses
+		boolScene = True
 		ftp.cwd(scene)
 		if(os.path.exists("C:/data/lahan/input/" + scene)):
 			shutil.rmtree("C:/data/lahan/input/" + scene)
@@ -44,4 +53,4 @@ def downloadFile():
 
 	filenameNow = [img for img in sceneNow if 'geo.ers' in img]
 	print filenameNow
-	return filenameNow[0], year, month
+	return filenameNow[0], scene, boolScene, year, month

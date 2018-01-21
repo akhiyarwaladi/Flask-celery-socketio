@@ -16,7 +16,7 @@ SOCKETIO_CHANNEL_2 = 'val-message'
 MESSAGES_KEY_2 = 'val'
 CHANNEL_NAME_2 = 'val-channel'
 
-dataPath = "C:/data/lahan/input/LC81010622015016DKI00L1TV10/"
+dataPath = "C:/data/lahan/input/"
 modelPath = "C:/data/lahan/model/DATATRAIN_decisionTree.pkl"
 shpPath = "C:/data/lahan/shp"
 outputPath = "C:/data/lahan/hasil/"
