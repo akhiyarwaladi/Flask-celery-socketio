@@ -20,6 +20,7 @@ import pandas as pd
 import numpy as np
 import os.path
 import ftpClient as ft
+import shutil
 
 redis = StrictRedis(host=config.REDIS_HOST)
 redis.delete(config.MESSAGES_KEY)
@@ -98,13 +99,14 @@ def tail():
     filenameOut = "L8U1T101062m_160115_geo_classified.TIF"
     dataPath =  config.dataPath + filename
     modelPath = config.modelPath
-    outputPath = config.outputPath + filenameOut
     shpPath = config.shpPath
 
-    if(os.path.exists(outputPath)):
-        os.remove(outputPath)
-    print(dataPath)
-    print(outputPath)
+    outFolder = config.outputPath + filename.split(".")[0]
+    if(os.path.exists(outFolder)):
+        shutil.rmtree(outFolder)
+    os.makedirs(outFolder)
+    outputPath = outFolder + "/" + filenameOut
+
 
     print ("converting b3")
     if(os.path.exists(dataPath + "TOA_B3" + ".TIF")):
@@ -172,6 +174,7 @@ def tail():
 
     columns = ['band3','band5', 'band6']
     df = pd.DataFrame(data, columns=columns)
+    del data
 
     print("Split data to 20 chunks ")
     msg = str(datetime.now()) + '\t' + "Split data to 20 chunks \n"
@@ -221,7 +224,6 @@ def tail():
     del kelas
     del dat
     del band1Array
-    del data
 
     print ("change list to np array")
     msg = str(datetime.now()) + '\t' + "change list to np array \n"
@@ -271,9 +273,12 @@ def tail():
     print("Masking Cloud")
     mask = Raster(os.path.dirname(dataPath) + "/" + filename.split(".")[0] + "_cm.ers")
     inRas = Raster(outputPath)
-    inRas_mask = Con((mask == 1) & (mask == 2) & (mask == 11), 99, inRas)
+    inRas_mask = Con((mask == 1), 1, Con((mask == 2), 1, Con((mask == 11), 1, 0)))
     inRas_mask.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_mask.TIF")
-    inRas_mask2 = SetNull(inRas_mask == 99, inRas_mask)
+    mask2 = IsNull(inRas_mask)
+    inRas2 = Con((mask2 == 1), 0, inRas_mask)
+    inRas2.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_mask2.TIF")
+    inRas_mask2 = SetNull(inRas2 == 1, inRas)
     inRas_mask2.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskCloud.TIF")
 
     del mask
