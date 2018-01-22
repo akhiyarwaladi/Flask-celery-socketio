@@ -213,6 +213,8 @@ def tail():
 
         # bagi data menjadi 20 bagian karena program tidak kuat prediksi sekaligus
         df_arr = np.array_split(df, 20)
+        # hapus dataframe
+        del df
         # load classifier (model pkl) yang telah di train
         clf = joblib.load(modelPath) 
 
@@ -371,15 +373,21 @@ def tail():
         # buka raster hasil masking cloud dan border
         inRasData = Raster(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskCloud.TIF")
         # terapkan fungsi masking dengan shapefile
-        outExtractByMask = ExtractByMask(inRasData, inMaskData)
-        print("Saving in: " + str(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskShp.TIF"))
-        # simpan hasil masking
-        outExtractByMask.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskShp.TIF")
+        try:
+            outExtractByMask = ExtractByMask(inRasData, inMaskData)
+            print("Saving in: " + str(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskShp.TIF"))
+            # simpan hasil masking
+            
+            outExtractByMask.save(os.path.dirname(outputPath) + "/" + filenameOut.split(".")[0] + "_maskShp.TIF")
+            # hapus lagi dan lagi variabel yang tidak digunakan
+            del inMaskData
+            del inRasData
+            del outExtractByMask        
+        except:
+            print "diluar indonesia shp"
+            pass
+        
         ########################## SELESAI ################################################
-        # hapus lagi dan lagi variabel yang tidak digunakan
-        del inMaskData
-        del inRasData
-        del outExtractByMask
 
         arcpy.Delete_management("in_memory")
 
@@ -417,7 +425,7 @@ def tail():
 
         redis.delete(config.MESSAGES_KEY)
         redis.delete(config.MESSAGES_KEY_2)
-
+        print locals()
         gc.collect()
 
 

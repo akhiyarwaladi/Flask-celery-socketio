@@ -32,7 +32,10 @@ def downloadFile(liScene):
 		if(os.path.exists("C:/data/lahan/input/" + scene)):
 			shutil.rmtree("C:/data/lahan/input/" + scene)
 		os.makedirs("C:/data/lahan/input/" + scene)
-		for file in ftp.nlst():
+		fileScene = ftp.nlst()
+		fileScene2 = [img for img in fileScene if img.endswith("_geo") or img.endswith("_geo.ers") or img.endswith("_geo_cm") or 
+		img.endswith("_geo_cm.ers")]
+		for file in fileScene2:
 			print file
 
 			filename = file #replace with your file in the directory ('directory_name')
